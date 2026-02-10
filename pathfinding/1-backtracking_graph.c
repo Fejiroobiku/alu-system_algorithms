@@ -1,127 +1,186 @@
 #include "pathfinding.h"
-#include "queues.h"
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 
 /**
- * is_visited - Checks if a vertex has been visited
- * @visited: Array tracking visited vertices
+ * is_vertex_in_path - Checks if a vertex is already in the current path
+ * @path: Queue containing the current path
  * @vertex: Vertex to check
- * Return: 1 if visited, 0 otherwise
+ * 
+ * Return: 1 if vertex is in path, 0 otherwise
  */
-static int is_visited(char *visited, vertex_t const *vertex)
+static int is_vertex_in_path(queue_t *path, const vertex_t *vertex)
 {
-    size_t idx = (size_t)vertex->content % 1000;
-    return visited[idx];
-}
-
-/**
- * mark_visited - Marks a vertex as visited
- * @visited: Array tracking visited vertices
- * @vertex: Vertex to mark
- */
-static void mark_visited(char *visited, vertex_t const *vertex)
-{
-    size_t idx = (size_t)vertex->content % 1000;
-    visited[idx] = 1;
-}
-
-/**
- * backtrack_recursive - Recursive helper for backtracking
- * @graph: Graph structure
- * @current: Current vertex
- * @target: Target vertex
- * @path: Path queue being built
- * @visited: Visited vertices array
- * Return: 1 if path found, 0 otherwise
- */
-static int backtrack_recursive(graph_t *graph,
-                               vertex_t const *current,
-                               vertex_t const *target,
-                               queue_t *path,
-                               char *visited)
-{
-    edge_t const *edge;
-    vertex_t const *neighbor;
+    queue_node_t *node;
     
-    (void)graph;
+    if (!path || !path->front || !vertex)
+        return (0);
     
-    mark_visited(visited, current);
-    
-    if (!queue_push_back(path, (void *)current->content))
-        return 0;
-    
-    if (current == target)
+    node = path->front;
+    while (node)
     {
-        printf("Found %s\n", (char *)current->content);
-        return 1;
+        if (node->ptr && strcmp((char *)node->ptr, vertex->content) == 0)
+            return (1);
+        node = node->next;
     }
     
-    printf("Checking %s\n", (char *)current->content);
+    return (0);
+}
+
+/**
+ * add_to_queue - Adds an element to the queue
+ * @queue: Queue to add to
+ * @ptr: Pointer to add
+ * 
+ * Return: 1 on success, 0 on failure
+ */
+static int add_to_queue(queue_t *queue, void *ptr)
+{
+    queue_node_t *node = malloc(sizeof(queue_node_t));
     
+    if (!queue || !node)
+    {
+        free(node);
+        return (0);
+    }
+    
+    node->ptr = ptr;
+    node->next = NULL;
+    node->prev = queue->back;
+    
+    if (queue->back)
+        queue->back->next = node;
+    else
+        queue->front = node;
+    
+    queue->back = node;
+    return (1);
+}
+
+/**
+ * remove_from_back - Removes the last element from the queue
+ * @queue: Queue to remove from
+ * 
+ * Return: Nothing
+ */
+static void remove_from_back(queue_t *queue)
+{
+    queue_node_t *node;
+    
+    if (!queue || !queue->back)
+        return;
+    
+    node = queue->back;
+    queue->back = node->prev;
+    
+    if (queue->back)
+        queue->back->next = NULL;
+    else
+        queue->front = NULL;
+    
+    free(node->ptr);
+    free(node);
+}
+
+/**
+ * backtrack_recursive - Recursive helper function for backtracking
+ * @current: Current vertex
+ * @target: Target vertex
+ * @path: Current path (queue)
+ * 
+ * Return: 1 if path to target found from current vertex, 0 otherwise
+ */
+static int backtrack_recursive(const vertex_t *current, const vertex_t *target,
+                               queue_t *path)
+{
+    edge_t *edge;
+    char *content_copy;
+    
+    printf("Checking %s\n", current->content);
+    
+    /* Add current vertex to path */
+    content_copy = strdup(current->content);
+    if (!content_copy)
+        return (0);
+    
+    if (!add_to_queue(path, content_copy))
+    {
+        free(content_copy);
+        return (0);
+    }
+    
+    /* Check if we reached the target */
+    if (strcmp(current->content, target->content) == 0)
+        return (1);
+    
+    /* Explore all edges from current vertex */
     edge = current->edges;
     while (edge)
     {
-        neighbor = edge->dest;
-        
-        if (is_visited(visited, neighbor))
+        /* Only explore if vertex not already in current path */
+        if (!is_vertex_in_path(path, edge->dest))
         {
-            edge = edge->next;
-            continue;
+            if (backtrack_recursive(edge->dest, target, path))
+                return (1);
+            
+            /* Backtrack: remove vertices until we're back to current */
+            while (path->back && 
+                   strcmp((char *)path->back->ptr, current->content) != 0)
+            {
+                remove_from_back(path);
+            }
         }
-        
-        if (backtrack_recursive(graph, neighbor, target, path, visited))
-            return 1;
-        
         edge = edge->next;
     }
     
-    free(dequeue(path));
-    return 0;
+    /* If we get here, this path didn't work, remove current vertex */
+    if (path->back && strcmp((char *)path->back->ptr, current->content) == 0)
+    {
+        remove_from_back(path);
+    }
+    
+    return (0);
 }
 
 /**
- * backtracking_graph - Performs backtracking to find a path between vertices
- * @graph: Pointer to the graph to go through
+ * backtracking_graph - Finds the first path from start to target using backtracking
+ * @graph: Pointer to the graph
  * @start: Pointer to the starting vertex
  * @target: Pointer to the target vertex
- *
- * Return: Queue containing the path from start to target, or NULL
+ * 
+ * Return: Queue containing the path from start to target, or NULL if no path found
  */
-queue_t *backtracking_graph(graph_t *graph,
-                            vertex_t const *start,
+queue_t *backtracking_graph(graph_t *graph, vertex_t const *start,
                             vertex_t const *target)
 {
-    queue_t *path = NULL;
-    char *visited = NULL;
+    queue_t *path;
     
     if (!graph || !start || !target)
-        return NULL;
+        return (NULL);
     
-    printf("Checking path from %s to %s\n",
-           (char *)start->content,
-           (char *)target->content);
-    
-    visited = calloc(1000, sizeof(char));
-    if (!visited)
-        return NULL;
-    
-    path = queue_create();
+    /* Create queue */
+    path = malloc(sizeof(queue_t));
     if (!path)
+        return (NULL);
+    
+    path->front = NULL;
+    path->back = NULL;
+    
+    /* Start recursive backtracking */
+    if (!backtrack_recursive(start, target, path))
     {
-        free(visited);
-        return NULL;
+        /* Clean up if no path found */
+        while (path->front)
+        {
+            queue_node_t *node = path->front;
+            path->front = node->next;
+            free(node->ptr);
+            free(node);
+        }
+        free(path);
+        return (NULL);
     }
     
-    if (backtrack_recursive(graph, start, target, path, visited))
-    {
-        free(visited);
-        return path;
-    }
-    
-    free(visited);
-    while (path->front)
-        free(dequeue(path));
-    queue_delete(path);
-    return NULL;
+    return (path);
 }
