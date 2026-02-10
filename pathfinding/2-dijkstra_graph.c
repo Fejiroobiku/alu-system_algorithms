@@ -4,17 +4,6 @@
 #include <string.h>
 #include <limits.h>
 
-/* Define the structure if not in header */
-#ifndef _DIJKSTRA_VERTEX_T
-#define _DIJKSTRA_VERTEX_T
-typedef struct dijkstra_vertex_s
-{
-    vertex_t *vertex;
-    size_t cml_weight;  /* cumulative weight */
-    vertex_t *path_via; /* previous vertex in path */
-} dijkstra_vertex_t;
-#endif
-
 /**
  * compareWeights - qsort comparator for Dijkstra queue
  * @param1: First vertex
@@ -118,8 +107,8 @@ static void assessEdges(dijkstra_vertex_t *d_queue, size_t nb_vertices,
         if (dq_head->path_via && edge->dest == dq_head->path_via)
             continue;
 
-        /* Find destination vertex in the queue */
-        for (j = dq_head_i; j < nb_vertices; j++)
+        /* Find destination vertex in the queue - CHECK ALL VERTICES */
+        for (j = 0; j < nb_vertices; j++)  /* FIXED: was (j = dq_head_i) */
         {
             if (d_queue[j].vertex == edge->dest)
             {
